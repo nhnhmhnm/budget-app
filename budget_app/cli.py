@@ -10,7 +10,7 @@ from collections.abc import Iterator
 from budget_app.backups import BackupManager
 from budget_app.decorators import command_boundary, measure_execution
 from budget_app.errors import InvalidInputError
-from budget_app.formatters import format_money, transaction_lines
+from budget_app.formatters import format_money, recurring_rule_lines, transaction_lines
 from budget_app.services import LedgerService
 
 
@@ -250,12 +250,9 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
             print(f"반복 규칙이 추가되었습니다. id={rule.id}")
         elif args.recurring_command == "list":
             found = False
-            for rule in service.list_recurring_rules():
+            for line in recurring_rule_lines(service.list_recurring_rules()):
                 found = True
-                print(
-                    f"매월 {rule.day:02d}일 | {rule.type:<7} | {rule.category:<12} | "
-                    f"{format_money(rule.amount):>14} | {rule.memo or '-'} | id={rule.id}"
-                )
+                print(line)
             if not found:
                 print("등록된 반복 규칙이 없습니다.")
         elif args.recurring_command == "remove":
