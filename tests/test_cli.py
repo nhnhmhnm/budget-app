@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import re
 import shutil
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -50,6 +51,38 @@ class CliTest(unittest.TestCase):
         self.assertIn("오류:", error)
         self.assertIn("해결:", error)
         self.assertNotIn("Traceback", error)
+
+    def test_recurring_and_backup_commands(self) -> None:
+        code, output, _ = self.run_cli(
+            "recurring",
+            "add",
+            "--type",
+            "expense",
+            "--day",
+            "31",
+            "--category",
+            "rent",
+            "--amount",
+            "700000",
+            "--memo",
+            "월세",
+        )
+        self.assertEqual(0, code)
+        rule_id = re.search(r"id=([0-9a-f]{32})", output)
+        self.assertIsNotNone(rule_id)
+
+        code, output, _ = self.run_cli("recurring", "generate", "--month", "2026-02")
+        self.assertEqual(0, code)
+        self.assertIn("생성=1", output)
+        code, output, _ = self.run_cli("recurring", "generate", "--month", "2026-02")
+        self.assertEqual(0, code)
+        self.assertIn("중복 건너뜀=1", output)
+
+        backup_dir = self.data_path / "archives"
+        code, output, _ = self.run_cli("backup", "--out-dir", str(backup_dir))
+        self.assertEqual(0, code)
+        self.assertIn("백업이 완료", output)
+        self.assertEqual(1, len(list(backup_dir.glob("budget-backup-*.zip"))))
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 # 콘솔 가계부
 
-Python 표준 라이브러리만 사용해 수입과 지출을 파일에 영구 저장하고 관리하는 콘솔 프로그램입니다. 거래 CRUD, 조건 검색, 월별 요약, 예산 및 카테고리 관리, CSV 가져오기/내보내기를 제공합니다.
+Python 표준 라이브러리만 사용해 수입과 지출을 파일에 영구 저장하고 관리하는 콘솔 프로그램입니다. 거래 CRUD, 조건 검색, 월별 요약, 예산 및 카테고리 관리, CSV 가져오기/내보내기와 모든 보너스 기능을 제공합니다.
 
 ## 과제 요약
 
@@ -9,10 +9,11 @@ Python 표준 라이브러리만 사용해 수입과 지출을 파일에 영구 
 - 카테고리별 지출 TOP N, 월 예산 사용률 및 초과 경고
 - 카테고리 추가·조회·삭제와 사용 중인 카테고리 삭제 방지
 - CSV 일괄 가져오기 및 기간별 내보내기
-- 거래·카테고리·예산을 서로 다른 파일에 영구 저장
+- 거래·카테고리·예산·반복 규칙을 서로 다른 파일에 영구 저장
 - 제너레이터 기반 스트리밍, 타입 힌트, 계층별 모듈 분리
 - 데코레이터를 통한 공통 오류 처리와 실행 시간 로그 분리
 - 잘못된 입력에는 스택 트레이스 대신 원인과 해결 힌트를 출력하고 0이 아닌 종료 코드 반환
+- 타임스탬프 ZIP 백업, 반복 거래 생성, 한글 폭을 고려한 표 출력, 원자적 파일 교체
 
 ## 실행 환경과 시작
 
@@ -100,15 +101,45 @@ CSV는 UTF-8, 헤더 포함이며 다음 스키마를 사용합니다.
 | `memo` | N | 문자열 |
 | `tags` | N | 쉼표로 구분한 문자열 |
 
+### 반복 거래
+
+월급, 월세, 구독료처럼 매월 반복되는 거래는 규칙으로 등록한 뒤 원하는 월에 생성합니다.
+
+```console
+python -m budget_app recurring add --type income --day 25 --category salary --amount 3000000 --memo "월급"
+python -m budget_app recurring add --type expense --day 31 --category rent --amount 700000 --tags "fixed,home"
+python -m budget_app recurring list
+python -m budget_app recurring generate --month 2026-02
+python -m budget_app recurring remove --id <rule-id>
+```
+
+대상 월에 없는 일자(예: 2월 31일)는 그달의 마지막 날로 조정합니다. 규칙 id와 월을 기준으로 이미 생성된 거래를 확인하므로 같은 명령을 다시 실행해도 중복 생성되지 않습니다. 반복 규칙이 참조하는 카테고리는 규칙을 삭제하기 전까지 제거할 수 없습니다.
+
+### 데이터 백업
+
+```console
+python -m budget_app backup
+python -m budget_app backup --out-dir ./archives
+```
+
+기본 출력 폴더는 `<data-dir>/backups`입니다. `budget-backup-YYYYMMDD-HHMMSS-ffffff.zip` 파일에 모든 JSONL 데이터와 생성 시각·포맷 버전을 기록한 `manifest.json`을 포함합니다. ZIP도 임시 파일을 완성한 뒤 최종 이름으로 원자적으로 교체합니다.
+
+복구할 때는 실행 중인 프로그램을 종료하고 ZIP의 JSONL 파일을 새 폴더에 푼 다음, `python -m budget_app --data-dir <복구 폴더> list`로 먼저 내용을 확인합니다. 확인 전에는 기존 운영 데이터 폴더를 덮어쓰지 않는 것이 안전합니다.
+
+### 표 형식 출력
+
+`list`, `search`, `recurring list`는 외부 라이브러리 없이 헤더와 구분선을 갖춘 표로 출력됩니다. 한글 문자의 터미널 표시 폭을 두 칸으로 계산해 열을 맞추고, 긴 메모나 태그는 말줄임표로 제한합니다. 입력 행은 미리 모으지 않고 계속 스트리밍합니다.
+
 ## 저장 파일
 
 데이터 폴더에 다음 UTF-8 JSONL 파일을 자동 생성합니다. JSONL은 한 줄에 JSON 객체 하나를 저장하므로 거래를 `yield`로 한 건씩 읽을 수 있습니다.
 
 | 파일 | 내용 | 예시 |
 | --- | --- | --- |
-| `transactions.jsonl` | 거래 | `{"id":"...","date":"2026-09-16","type":"expense","category":"food","amount":12000,"memo":"점심","tags":["work"]}` |
+| `transactions.jsonl` | 거래 | `{"id":"...","date":"2026-09-16","type":"expense","category":"food","amount":12000,"memo":"점심","tags":["work"],"recurring_id":null}` |
 | `categories.jsonl` | 카테고리 | `{"name":"food"}` |
 | `budgets.jsonl` | 월 예산 | `{"month":"2026-09","amount":1000000}` |
+| `recurring.jsonl` | 반복 거래 규칙 | `{"id":"...","type":"expense","day":31,"category":"rent","amount":700000,"memo":"월세","tags":["fixed"]}` |
 
 거래 필드의 의미는 다음과 같습니다.
 
@@ -119,6 +150,7 @@ CSV는 UTF-8, 헤더 포함이며 다음 스키마를 사용합니다.
 - `category`: 등록된 카테고리
 - `memo`: 선택 문자열
 - `tags`: 선택 문자열 배열
+- `recurring_id`: 반복 규칙에서 생성된 경우 원본 규칙 id, 일반 거래는 `null`
 
 ## 구조
 
@@ -130,7 +162,8 @@ budget_app/
 ├── models.py        # dataclass 데이터 계약
 ├── validators.py    # 입력 검증
 ├── decorators.py    # 오류 경계와 실행 시간 측정
-└── formatters.py    # 콘솔 표시 형식
+├── formatters.py    # 한글 폭을 고려한 스트리밍 표 형식
+└── backups.py       # 원자적 ZIP 백업과 manifest 생성
 ```
 
 CLI, 서비스, 저장소를 분리해 출력 방식이나 저장 포맷의 변경이 다른 계층에 번지는 범위를 줄였습니다. 타입 힌트는 계층 사이에 전달되는 값의 계약을 드러내며, `Transaction`, `Budget`, `MonthlySummary` 데이터 클래스는 관련 필드를 명시적으로 묶습니다.

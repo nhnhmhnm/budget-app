@@ -16,6 +16,7 @@ env/
 # 저장 데이터 (실행 산출물)
 /data/*.jsonl
 /data/*.csv
+/data/backups/
 
 # 편집기/OS
 .vscode/
