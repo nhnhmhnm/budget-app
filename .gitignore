@@ -23,4 +23,7 @@ env/
 .DS_Store
 Thumbs.db
 
+# 테스트 임시 파일
+/tests/.tmp/
+
 미션소개.txt
