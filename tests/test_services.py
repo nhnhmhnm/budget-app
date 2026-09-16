@@ -31,10 +31,11 @@ class LedgerServiceTest(unittest.TestCase):
         fields.update(overrides)
         return self.service.add_transaction(**fields)
 
-    def test_initializes_three_files_and_default_categories(self) -> None:
+    def test_initializes_storage_files_and_default_categories(self) -> None:
         self.assertTrue((self.data_dir / "transactions.jsonl").is_file())
         self.assertTrue((self.data_dir / "categories.jsonl").is_file())
         self.assertTrue((self.data_dir / "budgets.jsonl").is_file())
+        self.assertTrue((self.data_dir / "recurring.jsonl").is_file())
         self.assertIn("food", self.service.list_categories())
 
     def test_crud_and_latest_registration_order(self) -> None:
@@ -145,6 +146,35 @@ class LedgerServiceTest(unittest.TestCase):
     def test_export_requires_date_condition(self) -> None:
         with self.assertRaises(InvalidInputError):
             self.service.export_csv(self.data_dir / "out.csv")
+
+    def test_recurring_rule_generation_is_idempotent(self) -> None:
+        rule = self.service.add_recurring_rule(
+            type="expense",
+            day=31,
+            category="rent",
+            amount=700000,
+            memo="월세",
+            tags="fixed,home",
+        )
+        self.assertEqual([rule.id], [item.id for item in self.service.list_recurring_rules()])
+
+        self.assertEqual((1, 0), self.service.generate_recurring("2026-02"))
+        generated = list(self.service.list_transactions(10))
+        self.assertEqual(1, len(generated))
+        self.assertEqual("2026-02-28", generated[0].date)
+        self.assertEqual(rule.id, generated[0].recurring_id)
+        self.assertEqual((0, 1), self.service.generate_recurring("2026-02"))
+
+        self.service.remove_recurring_rule(rule.id)
+        self.assertEqual([], list(self.service.list_recurring_rules()))
+
+    def test_category_used_by_recurring_rule_cannot_be_removed(self) -> None:
+        self.service.add_category("subscription")
+        self.service.add_recurring_rule(
+            type="expense", day=1, category="subscription", amount=9900
+        )
+        with self.assertRaises(ConflictError):
+            self.service.remove_category("subscription")
 
 
 if __name__ == "__main__":

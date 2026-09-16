@@ -92,6 +92,21 @@ def build_parser() -> argparse.ArgumentParser:
     export.add_argument("--from", dest="date_from", help="시작 날짜 (YYYY-MM-DD)")
     export.add_argument("--to", dest="date_to", help="종료 날짜 (YYYY-MM-DD)")
 
+    recurring = _command_parser(commands, "recurring", "매월 반복되는 거래를 관리하고 생성합니다.")
+    recurring_commands = recurring.add_subparsers(dest="recurring_command", metavar="<action>")
+    recurring_add = recurring_commands.add_parser("add", help="반복 규칙 추가")
+    recurring_add.add_argument("--type", required=True, choices=("income", "expense"))
+    recurring_add.add_argument("--day", required=True, help="매월 생성할 일자 (1~31)")
+    recurring_add.add_argument("--category", required=True)
+    recurring_add.add_argument("--amount", required=True)
+    recurring_add.add_argument("--memo", default="")
+    recurring_add.add_argument("--tags", default="", help="쉼표 구분 태그")
+    recurring_commands.add_parser("list", help="반복 규칙 목록")
+    recurring_remove = recurring_commands.add_parser("remove", help="반복 규칙 삭제")
+    recurring_remove.add_argument("--id", required=True)
+    recurring_generate = recurring_commands.add_parser("generate", help="대상 월 거래 생성")
+    recurring_generate.add_argument("--month", required=True, help="대상 월 (YYYY-MM)")
+
     return parser
 
 
@@ -215,6 +230,35 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
             date_to=args.date_to,
         )
         print(f"CSV 내보내기가 완료되었습니다. 처리 건수={count}, 파일={args.out}")
+    elif args.command == "recurring":
+        if args.recurring_command == "add":
+            rule = service.add_recurring_rule(
+                type=args.type,
+                day=args.day,
+                category=args.category,
+                amount=args.amount,
+                memo=args.memo,
+                tags=args.tags,
+            )
+            print(f"반복 규칙이 추가되었습니다. id={rule.id}")
+        elif args.recurring_command == "list":
+            found = False
+            for rule in service.list_recurring_rules():
+                found = True
+                print(
+                    f"매월 {rule.day:02d}일 | {rule.type:<7} | {rule.category:<12} | "
+                    f"{format_money(rule.amount):>14} | {rule.memo or '-'} | id={rule.id}"
+                )
+            if not found:
+                print("등록된 반복 규칙이 없습니다.")
+        elif args.recurring_command == "remove":
+            service.remove_recurring_rule(args.id)
+            print(f"반복 규칙이 삭제되었습니다. id={args.id}")
+        elif args.recurring_command == "generate":
+            generated, skipped = service.generate_recurring(args.month)
+            print(f"반복 거래 생성이 완료되었습니다. 생성={generated}, 중복 건너뜀={skipped}")
+        else:
+            parser.parse_args(["recurring", "--help"])
     else:
         parser.print_help()
     return 0

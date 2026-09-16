@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import calendar
 import csv
 from dataclasses import replace
 from itertools import islice
@@ -10,8 +11,8 @@ from typing import Iterator, Mapping
 from uuid import uuid4
 
 from budget_app.errors import ConflictError, InvalidInputError, NotFoundError
-from budget_app.models import Budget, MonthlySummary, Transaction
-from budget_app.repositories import BudgetStore, CategoryStore, TransactionRepository
+from budget_app.models import Budget, MonthlySummary, RecurringRule, Transaction
+from budget_app.repositories import BudgetStore, CategoryStore, RecurringStore, TransactionRepository
 from budget_app.validators import (
     parse_tags,
     validate_category_name,
@@ -30,6 +31,7 @@ class LedgerService:
         self.transactions = TransactionRepository(data_dir)
         self.categories = CategoryStore(data_dir)
         self.budgets = BudgetStore(data_dir)
+        self.recurring = RecurringStore(data_dir)
 
     def _validate_category_exists(self, category: str) -> str:
         name = validate_category_name(category)
@@ -49,6 +51,7 @@ class LedgerService:
         amount: int | str,
         memo: str = "",
         tags: str | list[str] | None = None,
+        recurring_id: str | None = None,
     ) -> Transaction:
         return Transaction(
             id=uuid4().hex,
@@ -58,6 +61,7 @@ class LedgerService:
             amount=validate_positive_int(amount),
             memo=str(memo or "").strip(),
             tags=parse_tags(tags),
+            recurring_id=recurring_id,
         )
 
     def add_transaction(self, **fields: object) -> Transaction:
@@ -187,7 +191,85 @@ class LedgerService:
                 f"사용 중인 카테고리는 삭제할 수 없습니다: {normalized}",
                 "해당 거래의 카테고리를 먼저 수정하거나 삭제하세요.",
             )
+        if self.recurring.uses_category(normalized):
+            raise ConflictError(
+                f"반복 규칙에서 사용 중인 카테고리는 삭제할 수 없습니다: {normalized}",
+                "해당 반복 규칙을 먼저 삭제하세요.",
+            )
         self.categories.remove(normalized)
+
+    def add_recurring_rule(
+        self,
+        *,
+        type: str,
+        day: int | str,
+        category: str,
+        amount: int | str,
+        memo: str = "",
+        tags: str | list[str] | None = None,
+    ) -> RecurringRule:
+        validated_day = validate_positive_int(day, "반복 일자")
+        if validated_day > 31:
+            raise InvalidInputError("반복 일자는 1부터 31 사이여야 합니다.")
+        rule = RecurringRule(
+            id=uuid4().hex,
+            type=validate_type(type),
+            day=validated_day,
+            category=self._validate_category_exists(category),
+            amount=validate_positive_int(amount),
+            memo=memo.strip(),
+            tags=parse_tags(tags),
+        )
+        self.recurring.add(rule)
+        return rule
+
+    def list_recurring_rules(self) -> Iterator[RecurringRule]:
+        yield from self.recurring.iter_all()
+
+    def remove_recurring_rule(self, rule_id: str) -> None:
+        if not self.recurring.remove(rule_id):
+            raise NotFoundError(
+                f"반복 규칙을 찾을 수 없습니다: {rule_id}",
+                "recurring list 명령으로 id를 확인하세요.",
+            )
+
+    def generate_recurring(self, month: str) -> tuple[int, int]:
+        """대상 월의 반복 거래를 생성하고 (생성, 건너뜀) 건수를 반환한다."""
+
+        validate_month(month)
+        year, month_number = (int(part) for part in month.split("-"))
+        last_day = calendar.monthrange(year, month_number)[1]
+        generated_sources = {
+            item.recurring_id
+            for item in self.transactions.iter_all()
+            if item.recurring_id and item.date.startswith(f"{month}-")
+        }
+        skipped = 0
+
+        def new_transactions() -> Iterator[Transaction]:
+            nonlocal skipped
+            for rule in self.recurring.iter_all():
+                if rule.id in generated_sources:
+                    skipped += 1
+                    continue
+                if not self.categories.contains(rule.category):
+                    raise ConflictError(
+                        f"반복 규칙의 카테고리가 존재하지 않습니다: {rule.category}",
+                        f"규칙 id={rule.id}를 삭제하거나 카테고리를 다시 추가하세요.",
+                    )
+                day = min(rule.day, last_day)
+                yield self._new_transaction(
+                    date=f"{month}-{day:02d}",
+                    type=rule.type,
+                    category=rule.category,
+                    amount=rule.amount,
+                    memo=rule.memo,
+                    tags=rule.tags,
+                    recurring_id=rule.id,
+                )
+
+        generated = self.transactions.add_many(new_transactions())
+        return generated, skipped
 
     def import_csv(self, source: str | Path) -> int:
         path = validate_readable_file(source)

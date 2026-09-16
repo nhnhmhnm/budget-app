@@ -24,6 +24,7 @@ class Transaction:
     amount: int  # 양수 정수 (원 단위)
     memo: str = ""
     tags: list[str] = field(default_factory=list)
+    recurring_id: str | None = None
 
 
 @dataclass
@@ -39,6 +40,19 @@ class Budget:
 
     month: str  # YYYY-MM
     amount: int  # 양수 정수
+
+
+@dataclass
+class RecurringRule:
+    """매월 같은 날짜에 생성할 반복 거래 규칙."""
+
+    id: str
+    type: TransactionType
+    day: int
+    category: str
+    amount: int
+    memo: str = ""
+    tags: list[str] = field(default_factory=list)
 
 
 @dataclass

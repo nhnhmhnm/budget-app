@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator
 
 from budget_app.errors import StorageError
-from budget_app.models import Budget, Category, Transaction
+from budget_app.models import Budget, Category, RecurringRule, Transaction
 
 DEFAULT_CATEGORIES = ("food", "transport", "rent", "salary", "etc")
 
@@ -115,6 +115,7 @@ class TransactionRepository:
                 amount=int(value["amount"]),
                 memo=str(value.get("memo", "")),
                 tags=[str(tag) for tag in value.get("tags", [])],
+                recurring_id=(str(value["recurring_id"]) if value.get("recurring_id") else None),
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise StorageError("거래 저장 데이터의 필드가 올바르지 않습니다.", "transactions.jsonl을 확인하세요.") from exc
@@ -271,3 +272,57 @@ class BudgetStore:
                 yield asdict(budget)
 
         _atomic_write(self.path, values())
+
+
+class RecurringStore:
+    def __init__(self, data_dir: str | Path) -> None:
+        self.data_dir = Path(data_dir)
+        self.path = self.data_dir / "recurring.jsonl"
+        try:
+            self.data_dir.mkdir(parents=True, exist_ok=True)
+            self.path.touch(exist_ok=True)
+        except OSError as exc:
+            raise StorageError(f"반복 규칙 저장 파일을 준비하지 못했습니다: {self.path}") from exc
+
+    @staticmethod
+    def _from_dict(value: dict[str, Any]) -> RecurringRule:
+        try:
+            return RecurringRule(
+                id=str(value["id"]),
+                type=value["type"],
+                day=int(value["day"]),
+                category=str(value["category"]),
+                amount=int(value["amount"]),
+                memo=str(value.get("memo", "")),
+                tags=[str(tag) for tag in value.get("tags", [])],
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise StorageError("반복 규칙 저장 데이터의 필드가 올바르지 않습니다.") from exc
+
+    def iter_all(self) -> Iterator[RecurringRule]:
+        for value in _read_json_lines(self.path):
+            yield self._from_dict(value)
+
+    def add(self, rule: RecurringRule) -> None:
+        try:
+            with self.path.open("a", encoding="utf-8", newline="\n") as file:
+                file.write(json.dumps(asdict(rule), ensure_ascii=False, separators=(",", ":")) + "\n")
+        except OSError as exc:
+            raise StorageError("반복 규칙을 저장하지 못했습니다.") from exc
+
+    def remove(self, rule_id: str) -> bool:
+        found = False
+
+        def values() -> Iterator[dict[str, Any]]:
+            nonlocal found
+            for rule in self.iter_all():
+                if rule.id == rule_id:
+                    found = True
+                    continue
+                yield asdict(rule)
+
+        _atomic_write(self.path, values())
+        return found
+
+    def uses_category(self, category: str) -> bool:
+        return any(rule.category == category for rule in self.iter_all())
