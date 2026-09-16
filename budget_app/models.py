@@ -39,3 +39,29 @@ class Budget:
 
     month: str  # YYYY-MM
     amount: int  # 양수 정수
+
+
+@dataclass
+class MonthlySummary:
+    """월별 집계 결과."""
+
+    month: str
+    income: int
+    expense: int
+    category_expenses: list[tuple[str, int]]
+    transaction_count: int
+    budget: int | None = None
+
+    @property
+    def balance(self) -> int:
+        return self.income - self.expense
+
+    @property
+    def budget_usage(self) -> float | None:
+        if self.budget is None:
+            return None
+        return self.expense / self.budget * 100
+
+    @property
+    def is_over_budget(self) -> bool:
+        return self.budget is not None and self.expense > self.budget
