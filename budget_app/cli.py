@@ -7,6 +7,7 @@ import logging
 import sys
 from collections.abc import Iterator
 
+from budget_app.backups import BackupManager
 from budget_app.decorators import command_boundary, measure_execution
 from budget_app.errors import InvalidInputError
 from budget_app.formatters import format_money, transaction_lines
@@ -106,6 +107,12 @@ def build_parser() -> argparse.ArgumentParser:
     recurring_remove.add_argument("--id", required=True)
     recurring_generate = recurring_commands.add_parser("generate", help="대상 월 거래 생성")
     recurring_generate.add_argument("--month", required=True, help="대상 월 (YYYY-MM)")
+
+    backup = _command_parser(commands, "backup", "현재 데이터를 타임스탬프 ZIP으로 백업합니다.")
+    backup.add_argument(
+        "--out-dir",
+        help="백업 폴더 (기본: 데이터 폴더의 backups 하위 폴더)",
+    )
 
     return parser
 
@@ -259,6 +266,9 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
             print(f"반복 거래 생성이 완료되었습니다. 생성={generated}, 중복 건너뜀={skipped}")
         else:
             parser.parse_args(["recurring", "--help"])
+    elif args.command == "backup":
+        output_path = BackupManager(args.data_dir).create(args.out_dir)
+        print(f"백업이 완료되었습니다. 파일={output_path}")
     else:
         parser.print_help()
     return 0

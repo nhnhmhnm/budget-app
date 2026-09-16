@@ -3,9 +3,11 @@ from __future__ import annotations
 import csv
 import shutil
 import unittest
+import zipfile
 from pathlib import Path
 from uuid import uuid4
 
+from budget_app.backups import BACKUP_FILES, BackupManager
 from budget_app.errors import ConflictError, InvalidInputError, NotFoundError
 from budget_app.services import LedgerService
 
@@ -175,6 +177,22 @@ class LedgerServiceTest(unittest.TestCase):
         )
         with self.assertRaises(ConflictError):
             self.service.remove_category("subscription")
+
+    def test_backup_contains_all_data_files_and_manifest(self) -> None:
+        self.add_expense()
+        self.service.set_budget("2026-09", 100000)
+        self.service.add_recurring_rule(
+            type="income", day=25, category="salary", amount=3000000
+        )
+
+        backup_path = BackupManager(self.data_dir).create()
+
+        self.assertTrue(backup_path.name.startswith("budget-backup-"))
+        with zipfile.ZipFile(backup_path) as archive:
+            names = set(archive.namelist())
+            self.assertTrue(set(BACKUP_FILES).issubset(names))
+            self.assertIn("manifest.json", names)
+            self.assertIn("created_at", archive.read("manifest.json").decode("utf-8"))
 
 
 if __name__ == "__main__":
