@@ -46,7 +46,7 @@ def command_boundary(func: Callable[P, int]) -> Callable[P, int]:
             print("\n작업이 취소되었습니다.", file=sys.stderr)
             return 130
         except Exception as exc:
-            logger.exception("처리하지 못한 예외")
+            logger.error("처리하지 못한 예외: %s", type(exc).__name__)
             print(f"오류: 명령을 처리하지 못했습니다 ({type(exc).__name__}).", file=sys.stderr)
             print("해결: 입력과 데이터 파일 상태를 확인한 뒤 다시 시도하세요.", file=sys.stderr)
             return 1

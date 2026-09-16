@@ -86,6 +86,8 @@ def validate_non_negative_int(value: Any, field_name: str) -> int:
 
 
 def validate_category_name(value: str) -> str:
+    if not isinstance(value, str):
+        raise InvalidInputError("카테고리 이름이 문자열이 아닙니다.", "카테고리 값을 확인하세요.")
     name = value.strip()
     if not name:
         raise InvalidInputError("카테고리 이름이 비어 있습니다.", "한 글자 이상 입력하세요.")

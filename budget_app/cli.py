@@ -79,6 +79,19 @@ def build_parser() -> argparse.ArgumentParser:
     budget_show = budget_commands.add_parser("show", help="월 예산 조회")
     budget_show.add_argument("--month", required=True, help="대상 월 (YYYY-MM)")
 
+    summary = _command_parser(commands, "summary", "월별 수입·지출과 예산 사용률을 요약합니다.")
+    summary.add_argument("--month", required=True, help="대상 월 (YYYY-MM)")
+    summary.add_argument("--top", type=int, default=3, help="지출 카테고리 출력 개수 (기본: 3)")
+
+    import_parser = _command_parser(commands, "import", "UTF-8 CSV의 거래를 일괄 등록합니다.")
+    import_parser.add_argument("--from", dest="source", required=True, help="가져올 CSV 경로")
+
+    export = _command_parser(commands, "export", "기간 조건에 맞는 거래를 UTF-8 CSV로 저장합니다.")
+    export.add_argument("--out", required=True, help="저장할 CSV 경로")
+    export.add_argument("--month", help="대상 월 (YYYY-MM)")
+    export.add_argument("--from", dest="date_from", help="시작 날짜 (YYYY-MM-DD)")
+    export.add_argument("--to", dest="date_to", help="종료 날짜 (YYYY-MM-DD)")
+
     return parser
 
 
@@ -118,6 +131,26 @@ def _handle_add(service: LedgerService) -> None:
 def _changes_from_args(args: argparse.Namespace) -> dict[str, object]:
     fields = ("date", "type", "category", "amount", "memo", "tags")
     return {field: getattr(args, field) for field in fields if getattr(args, field) is not None}
+
+
+def _print_summary(service: LedgerService, month: str, top: int) -> None:
+    summary = service.monthly_summary(month, top)
+    if summary.transaction_count == 0:
+        print(f"{month} 거래 데이터가 없습니다.")
+        return
+    print(f"[{month} 요약]")
+    print(f"총 수입: {format_money(summary.income)}")
+    print(f"총 지출: {format_money(summary.expense)}")
+    print(f"잔액: {format_money(summary.balance)}")
+    if summary.category_expenses:
+        print(f"지출 카테고리 TOP {top}:")
+        for rank, (category, amount) in enumerate(summary.category_expenses, start=1):
+            print(f"  {rank}. {category}: {format_money(amount)}")
+    if summary.budget is not None:
+        print(f"예산: {format_money(summary.budget)}")
+        print(f"예산 사용률: {summary.budget_usage:.1f}%")
+        if summary.is_over_budget:
+            print(f"경고: 예산을 {format_money(summary.expense - summary.budget)} 초과했습니다!")
 
 
 @measure_execution
@@ -169,6 +202,19 @@ def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
             )
         else:
             parser.parse_args(["budget", "--help"])
+    elif args.command == "summary":
+        _print_summary(service, args.month, args.top)
+    elif args.command == "import":
+        count = service.import_csv(args.source)
+        print(f"CSV 가져오기가 완료되었습니다. 처리 건수={count}")
+    elif args.command == "export":
+        count = service.export_csv(
+            args.out,
+            month=args.month,
+            date_from=args.date_from,
+            date_to=args.date_to,
+        )
+        print(f"CSV 내보내기가 완료되었습니다. 처리 건수={count}, 파일={args.out}")
     else:
         parser.print_help()
     return 0

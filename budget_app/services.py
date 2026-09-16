@@ -56,7 +56,7 @@ class LedgerService:
             type=validate_type(type),
             category=self._validate_category_exists(category),
             amount=validate_positive_int(amount),
-            memo=memo.strip(),
+            memo=str(memo or "").strip(),
             tags=parse_tags(tags),
         )
 
@@ -237,9 +237,6 @@ class LedgerService:
             )
         if month:
             validate_month(month)
-            month_from, month_to = f"{month}-01", f"{month}-31"
-            date_from = max(filter(None, (date_from, month_from)), default=None)
-            date_to = min(filter(None, (date_to, month_to)), default=None)
         if date_from:
             validate_date(date_from, "시작 날짜")
         if date_to:
@@ -254,6 +251,8 @@ class LedgerService:
                 writer = csv.DictWriter(file, fieldnames=CSV_COLUMNS)
                 writer.writeheader()
                 for item in self.transactions.iter_all():
+                    if month and not item.date.startswith(f"{month}-"):
+                        continue
                     if date_from and item.date < date_from:
                         continue
                     if date_to and item.date > date_to:
