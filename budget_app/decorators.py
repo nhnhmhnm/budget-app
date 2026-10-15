@@ -11,6 +11,7 @@ from typing import ParamSpec, TypeVar, cast
 
 from budget_app.errors import BudgetAppError
 
+# ParamSpec/TypeVar로 장식 전후 함수의 인자와 반환 타입을 그대로 보존한다.
 P = ParamSpec("P")
 R = TypeVar("R")
 logger = logging.getLogger("budget_app")
@@ -25,6 +26,7 @@ def measure_execution(func: Callable[P, R]) -> Callable[P, R]:
         try:
             return func(*args, **kwargs)
         finally:
+            # 성공/실패와 무관하게 측정하되 --verbose일 때만 INFO 로그가 보인다.
             logger.info("%s 실행 시간: %.3f초", func.__name__, time.perf_counter() - started)
 
     return wrapper
@@ -37,6 +39,7 @@ def command_boundary(func: Callable[P, int]) -> Callable[P, int]:
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> int:
         try:
             return func(*args, **kwargs)
+        # 각 명령마다 같은 try/except를 반복하지 않고 CLI의 마지막 경계에서 변환한다.
         except BudgetAppError as exc:
             print(f"오류: {exc.message}", file=sys.stderr)
             if exc.hint:

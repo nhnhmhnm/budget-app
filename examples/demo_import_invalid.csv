@@ -1,0 +1,3 @@
+date,type,category,amount,memo,tags
+2026-10-03,expense,food,10000,정상처럼 보이는 첫 행,demo
+2026-02-30,expense,food,20000,잘못된 날짜 행,demo

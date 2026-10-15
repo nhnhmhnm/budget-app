@@ -57,6 +57,8 @@ def table_lines(
     """행을 미리 모으지 않고 헤더가 있는 고정 폭 표를 생성한다."""
 
     iterator = iter(rows)
+    # 첫 행 하나만 미리 확인해 빈 결과에는 헤더조차 출력하지 않는다.
+    # 이후 행은 계속 iterator에서 받아 표 형식도 스트리밍 특성을 유지한다.
     first = next(iterator, None)
     if first is None:
         return

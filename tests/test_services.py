@@ -145,6 +145,16 @@ class LedgerServiceTest(unittest.TestCase):
             imported.import_csv(invalid_path)
         self.assertEqual(before, len(list(imported.list_transactions(100))))
 
+    def test_committed_demo_csv_files_match_the_presentation_scenario(self) -> None:
+        examples = Path(__file__).parents[1] / "examples"
+        self.assertEqual(2, self.service.import_csv(examples / "demo_import.csv"))
+        before = len(list(self.service.list_transactions(100)))
+        self.assertEqual(2, before)
+
+        with self.assertRaisesRegex(InvalidInputError, "CSV 3행"):
+            self.service.import_csv(examples / "demo_import_invalid.csv")
+        self.assertEqual(before, len(list(self.service.list_transactions(100))))
+
     def test_export_requires_date_condition(self) -> None:
         with self.assertRaises(InvalidInputError):
             self.service.export_csv(self.data_dir / "out.csv")

@@ -27,6 +27,8 @@ CSV_COLUMNS = ("date", "type", "category", "amount", "memo", "tags")
 
 
 class LedgerService:
+    """CLI와 파일 I/O 사이에서 검증, 참조 무결성, 집계 규칙을 담당한다."""
+
     def __init__(self, data_dir: str | Path) -> None:
         self.transactions = TransactionRepository(data_dir)
         self.categories = CategoryStore(data_dir)
@@ -79,6 +81,7 @@ class LedgerService:
     def list_transactions(self, limit: int) -> Iterator[Transaction]:
         if limit <= 0:
             raise InvalidInputError("--limit은 1 이상이어야 합니다.", "양의 정수를 입력하세요.")
+        # islice가 필요한 건수에서 소비를 멈추므로 나머지 파일을 읽지 않는다.
         yield from islice(self.transactions.iter_latest(), limit)
 
     def search_transactions(
@@ -102,6 +105,8 @@ class LedgerService:
         if type:
             validate_type(type)
         normalized_query = query.casefold() if query else None
+        # 검증된 ISO 날짜(YYYY-MM-DD)는 문자열 비교 순서와 날짜 순서가 같다.
+        # 조건을 통과한 항목만 yield하여 검색 결과도 리스트로 누적하지 않는다.
         for item in self.transactions.iter_latest():
             if date_from and item.date < date_from:
                 continue
@@ -136,6 +141,7 @@ class LedgerService:
             validated["memo"] = str(changes["memo"]).strip()
         if "tags" in changes:
             validated["tags"] = parse_tags(changes["tags"])
+        # dataclasses.replace로 기존 객체를 직접 훼손하지 않고 수정본을 만든다.
         updated = replace(current, **validated)
         if not self.transactions.update(updated):
             raise NotFoundError(f"거래를 갱신하는 동안 id가 사라졌습니다: {transaction_id}")
@@ -151,6 +157,7 @@ class LedgerService:
             raise InvalidInputError("--top은 1 이상이어야 합니다.")
         income = expense = count = 0
         category_expenses: dict[str, int] = {}
+        # 월 거래를 한 번 순회하면서 총액과 카테고리 집계를 동시에 계산한다.
         for item in self.transactions.iter_all():
             if not item.date.startswith(f"{month}-"):
                 continue
@@ -186,6 +193,7 @@ class LedgerService:
         normalized = validate_category_name(name)
         if not self.categories.contains(normalized):
             raise NotFoundError(f"카테고리를 찾을 수 없습니다: {normalized}", "category list로 확인하세요.")
+        # 파일 저장소에는 외래 키가 없으므로 서비스 계층에서 참조 무결성을 지킨다.
         if self.transactions.uses_category(normalized):
             raise ConflictError(
                 f"사용 중인 카테고리는 삭제할 수 없습니다: {normalized}",
@@ -249,6 +257,7 @@ class LedgerService:
         def new_transactions() -> Iterator[Transaction]:
             nonlocal skipped
             for rule in self.recurring.iter_all():
+                # 규칙 id + 대상 월로 이미 만든 거래를 식별해 재실행을 안전하게 만든다.
                 if rule.id in generated_sources:
                     skipped += 1
                     continue
@@ -274,6 +283,8 @@ class LedgerService:
     def import_csv(self, source: str | Path) -> int:
         path = validate_readable_file(source)
 
+        # CSV를 한 행씩 검증하는 제너레이터를 원자적 add_many에 넘긴다.
+        # 따라서 큰 파일을 한꺼번에 적재하지 않으면서도 all-or-nothing을 보장한다.
         def transactions() -> Iterator[Transaction]:
             try:
                 with path.open("r", encoding="utf-8-sig", newline="") as file:

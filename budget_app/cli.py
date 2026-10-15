@@ -177,6 +177,12 @@ def _print_summary(service: LedgerService, month: str, top: int) -> None:
 
 @measure_execution
 def _dispatch(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    """파싱된 명령을 서비스에 위임하고 결과를 사용자 표현으로 바꾼다.
+
+    검증이나 파일 처리 규칙을 여기에 넣지 않아 CLI 교체가 도메인 로직에
+    영향을 주지 않게 하는 것이 이 계층의 책임 경계다.
+    """
+
     service = LedgerService(args.data_dir)
     if args.command == "add":
         _handle_add(service)

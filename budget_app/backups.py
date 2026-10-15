@@ -33,6 +33,7 @@ class BackupManager:
             destination.mkdir(parents=True, exist_ok=True)
             with tempfile.NamedTemporaryFile(dir=destination, suffix=".tmp", delete=False) as file:
                 temp_path = Path(file.name)
+            # 운영 데이터만 명시적으로 선택해 이전 백업이 다시 포함되는 일을 막는다.
             with zipfile.ZipFile(temp_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
                 included: list[str] = []
                 for name in BACKUP_FILES:
@@ -52,6 +53,7 @@ class BackupManager:
                 archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
             with temp_path.open("r+b") as file:
                 os.fsync(file.fileno())
+            # ZIP 생성이 끝난 뒤에만 최종 파일명이 나타나므로 불완전한 백업을 피한다.
             os.replace(temp_path, output_path)
             return output_path
         except StorageError:

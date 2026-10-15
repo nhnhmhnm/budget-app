@@ -11,7 +11,7 @@ import os
 import tempfile
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Callable, Iterable, Iterator
+from typing import Any, Iterable, Iterator
 
 from budget_app.errors import StorageError
 from budget_app.models import Budget, Category, RecurringRule, Transaction
@@ -34,6 +34,7 @@ def _read_json_lines(path: Path) -> Iterator[dict[str, Any]]:
                     ) from exc
                 if not isinstance(value, dict):
                     raise StorageError(f"저장 파일의 {line_number}번째 행이 객체가 아닙니다: {path}")
+                # yield 때문에 파일 크기와 관계없이 현재 한 행만 메모리에 유지한다.
                 yield value
     except OSError as exc:
         raise StorageError(f"저장 파일을 읽지 못했습니다: {path}", "파일 권한을 확인하세요.") from exc
@@ -48,12 +49,14 @@ def _read_lines_reversed(path: Path, block_size: int = 8192) -> Iterator[str]:
             position = file.tell()
             buffer = b""
             while position > 0:
+                # 끝에서 8KB씩 읽고, 블록 경계에 걸린 미완성 행만 buffer에 남긴다.
                 read_size = min(block_size, position)
                 position -= read_size
                 file.seek(position)
                 buffer = file.read(read_size) + buffer
                 lines = buffer.split(b"\n")
                 buffer = lines[0]
+                # JSONL은 레코드 하나가 한 줄이므로 완성된 줄부터 즉시 역순 반환할 수 있다.
                 for line in reversed(lines[1:]):
                     if line.strip():
                         yield line.decode("utf-8")
@@ -70,6 +73,8 @@ def _atomic_write(path: Path, values: Iterable[dict[str, Any]]) -> int:
     temp_path: Path | None = None
     count = 0
     try:
+        # 원본과 같은 디렉터리에 임시 파일을 만들어 os.replace가 같은 파일시스템에서
+        # 원자적으로 동작하도록 한다. 중간 실패 시 원본 파일은 그대로 남는다.
         with tempfile.NamedTemporaryFile(
             "w", encoding="utf-8", newline="\n", dir=path.parent, delete=False
         ) as file:
@@ -78,6 +83,7 @@ def _atomic_write(path: Path, values: Iterable[dict[str, Any]]) -> int:
                 file.write(json.dumps(value, ensure_ascii=False, separators=(",", ":")) + "\n")
                 count += 1
             file.flush()
+            # 파이썬 버퍼뿐 아니라 운영체제 버퍼도 디스크에 반영한 뒤 교체한다.
             os.fsync(file.fileno())
         os.replace(temp_path, path)
         return count
@@ -142,6 +148,8 @@ class TransactionRepository:
             raise StorageError("거래를 저장하지 못했습니다.", "파일 권한과 디스크 공간을 확인하세요.") from exc
 
     def add_many(self, transactions: Iterable[Transaction]) -> int:
+        # import 행도 지연 평가된다. 어느 행에서 검증 오류가 나면 _atomic_write가
+        # 임시 파일만 버리므로 앞의 정상 행도 원본에 부분 반영되지 않는다.
         existing = (asdict(transaction) for transaction in self.iter_all())
         additions = (asdict(transaction) for transaction in transactions)
         original_count = sum(1 for _ in self.iter_all())
@@ -156,6 +164,7 @@ class TransactionRepository:
 
         def values() -> Iterator[dict[str, Any]]:
             nonlocal found
+            # 전체를 리스트로 만들지 않고 한 행씩 복사하며 대상 id만 새 값으로 바꾼다.
             for current in self.iter_all():
                 if current.id == transaction.id:
                     found = True
