@@ -5,13 +5,33 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from typing import TypeVar
 
 from budget_app.backups import BackupManager
 from budget_app.decorators import command_boundary, measure_execution
 from budget_app.errors import InvalidInputError
 from budget_app.formatters import format_money, recurring_rule_lines, transaction_lines
 from budget_app.services import LedgerService
+from budget_app.validators import (
+    validate_date,
+    validate_positive_int,
+    validate_type,
+)
+
+
+T = TypeVar("T")
+
+
+class BudgetArgumentParser(argparse.ArgumentParser):
+    """명령 문법 오류에도 일관된 오류 메시지와 해결 힌트를 제공한다."""
+
+    def error(self, message: str) -> None:
+        self.print_usage(sys.stderr)
+        self.exit(
+            2,
+            f"오류: {message}\n해결: '{self.prog} --help'로 사용할 수 있는 명령과 옵션을 확인하세요.\n",
+        )
 
 
 def _add_runtime_options(parser: argparse.ArgumentParser, *, root: bool = False) -> None:
@@ -32,7 +52,7 @@ def _command_parser(subparsers: argparse._SubParsersAction, name: str, help: str
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = BudgetArgumentParser(
         prog="budget_app",
         description="콘솔 가계부: 수입/지출 CRUD, 검색, 예산, 카테고리, CSV 입출력",
     )
@@ -117,15 +137,32 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _prompt(label: str, *, optional: bool = False) -> str:
+def _read_prompt(label: str, *, optional: bool = False) -> str:
     suffix = " (선택)" if optional else ""
     try:
-        value = input(f"{label}{suffix}: ").strip()
+        return input(f"{label}{suffix}: ").strip()
     except EOFError as exc:
         raise InvalidInputError("입력이 중단되었습니다.", "값을 입력하거나 Ctrl+C로 종료하세요.") from exc
+
+
+def _prompt(label: str, *, optional: bool = False) -> str:
+    value = _read_prompt(label, optional=optional)
     if not optional and not value:
         raise InvalidInputError(f"{label} 값은 필수입니다.", "값을 입력한 뒤 다시 실행하세요.")
     return value
+
+
+def _prompt_validated(label: str, validator: Callable[[str], T]) -> T:
+    """필수값을 입력 즉시 검증하고, 잘못된 필드만 다시 입력받는다."""
+
+    while True:
+        value = _read_prompt(label)
+        try:
+            return validator(value)
+        except InvalidInputError as exc:
+            print(f"오류: {exc.message}", file=sys.stderr)
+            if exc.hint:
+                print(f"해결: {exc.hint}", file=sys.stderr)
 
 
 def _print_transactions(items: Iterator) -> None:
@@ -140,10 +177,10 @@ def _print_transactions(items: Iterator) -> None:
 def _handle_add(service: LedgerService) -> None:
     print("등록된 카테고리: " + ", ".join(service.list_categories()))
     transaction = service.add_transaction(
-        date=_prompt("날짜 (YYYY-MM-DD)"),
-        type=_prompt("타입 (income/expense)"),
-        category=_prompt("카테고리"),
-        amount=_prompt("금액"),
+        date=_prompt_validated("날짜 (YYYY-MM-DD)", validate_date),
+        type=_prompt_validated("타입 (income/expense)", validate_type),
+        category=_prompt_validated("카테고리", service.validate_category),
+        amount=_prompt_validated("금액", validate_positive_int),
         memo=_prompt("메모", optional=True),
         tags=_prompt("태그 (쉼표 구분)", optional=True),
     )

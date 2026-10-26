@@ -44,6 +44,11 @@ class LedgerService:
             )
         return name
 
+    def validate_category(self, category: str) -> str:
+        """대화형 입력에서도 같은 카테고리 규칙을 재사용할 수 있게 한다."""
+
+        return self._validate_category_exists(category)
+
     def _new_transaction(
         self,
         *,

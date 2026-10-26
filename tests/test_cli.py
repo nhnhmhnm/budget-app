@@ -44,6 +44,53 @@ class CliTest(unittest.TestCase):
         self.assertEqual(0, code)
         self.assertIn("총 지출: 12,000원", output)
 
+    def test_interactive_add_reprompts_each_invalid_required_field(self) -> None:
+        answers = iter(
+            (
+                "2026",
+                "2026-10-15",
+                "v",
+                "expense",
+                "",
+                "unknown",
+                "food",
+                "0",
+                "350000",
+                "팀 저녁 식사",
+                "team,food",
+            )
+        )
+        prompts: list[str] = []
+
+        def answer(prompt: str) -> str:
+            prompts.append(prompt)
+            return next(answers)
+
+        with patch("builtins.input", side_effect=answer):
+            code, output, error = self.run_cli("add")
+
+        self.assertEqual(0, code)
+        self.assertIn("거래가 저장되었습니다.", output)
+        self.assertIn("날짜 형식이 올바르지 않습니다: 2026", error)
+        self.assertIn("허용되지 않는 거래 타입입니다: v", error)
+        self.assertIn("카테고리 이름이 비어 있습니다.", error)
+        self.assertIn("등록되지 않은 카테고리입니다: unknown", error)
+        self.assertIn("금액은 0보다 큰 정수여야 합니다: 0", error)
+        self.assertEqual(2, prompts.count("날짜 (YYYY-MM-DD): "))
+        self.assertEqual(2, prompts.count("타입 (income/expense): "))
+        self.assertEqual(3, prompts.count("카테고리: "))
+        self.assertEqual(2, prompts.count("금액: "))
+
+    def test_command_syntax_error_has_hint_and_nonzero_exit(self) -> None:
+        error = io.StringIO()
+        with redirect_stderr(error), self.assertRaises(SystemExit) as raised:
+            main(["wrong-command"])
+
+        self.assertEqual(2, raised.exception.code)
+        self.assertIn("오류:", error.getvalue())
+        self.assertIn("해결:", error.getvalue())
+        self.assertNotIn("Traceback", error.getvalue())
+
     def test_domain_error_has_hint_and_nonzero_exit(self) -> None:
         code, output, error = self.run_cli("delete", "--id", "missing")
         self.assertEqual(2, code)

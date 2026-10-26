@@ -42,8 +42,8 @@ def command_boundary(func: Callable[P, int]) -> Callable[P, int]:
         # 각 명령마다 같은 try/except를 반복하지 않고 CLI의 마지막 경계에서 변환한다.
         except BudgetAppError as exc:
             print(f"오류: {exc.message}", file=sys.stderr)
-            if exc.hint:
-                print(f"해결: {exc.hint}", file=sys.stderr)
+            hint = exc.hint or "입력값과 데이터 파일 상태를 확인한 뒤 다시 시도하세요."
+            print(f"해결: {hint}", file=sys.stderr)
             return 2
         except KeyboardInterrupt:
             print("\n작업이 취소되었습니다.", file=sys.stderr)

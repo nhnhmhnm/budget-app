@@ -1,0 +1,14 @@
+date,type,category,amount,memo,tags
+2026-10-26,income,food,10000,편의점,
+2026-10-01,income,salary,3000000,10월 급여,"salary,monthly"
+2026-10-02,expense,rent,700000,10월 월세,"fixed,home"
+2026-10-03,expense,food,20000,회사 점심,"work,meal"
+2026-10-04,expense,transport,5000,버스 교통비,"commute,bus"
+2026-10-05,expense,etc,45000,생활용품 구매,"household,shopping"
+2026-10-10,income,etc,150000,중고 물품 판매,"side,sale"
+2026-10-12,expense,food,35000,주말 장보기,"grocery,home"
+2026-10-18,expense,transport,20000,택시 이용,"late,taxi"
+2026-10-20,expense,etc,90000,전기 요금,"utility,fixed"
+2026-10-25,income,salary,200000,성과 보너스,"bonus,work"
+2026-10-27,expense,food,320000,팀 저녁 식사(수정),"family,meal"
+2026-10-29,expense,transport,65000,교통카드 충전,"commute,prepaid"

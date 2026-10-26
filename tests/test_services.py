@@ -147,9 +147,12 @@ class LedgerServiceTest(unittest.TestCase):
 
     def test_committed_demo_csv_files_match_the_presentation_scenario(self) -> None:
         examples = Path(__file__).parents[1] / "examples"
-        self.assertEqual(2, self.service.import_csv(examples / "demo_import.csv"))
+        self.assertEqual(12, self.service.import_csv(examples / "demo_import.csv"))
         before = len(list(self.service.list_transactions(100)))
-        self.assertEqual(2, before)
+        self.assertEqual(12, before)
+        summary = self.service.monthly_summary("2026-10", top=3)
+        self.assertEqual(3350000, summary.income)
+        self.assertEqual(1030000, summary.expense)
 
         with self.assertRaisesRegex(InvalidInputError, "CSV 3행"):
             self.service.import_csv(examples / "demo_import_invalid.csv")
