@@ -254,6 +254,16 @@ budget_app/
 
 “update/delete는 원본을 열어 직접 수정하지 않습니다. 원본을 제너레이터로 읽어 같은 디렉터리의 임시 파일에 새 내용을 쓰고, flush와 `fsync` 후 `os.replace`합니다. 쓰기나 검증이 실패하면 임시 파일만 삭제하므로 원본이 보존됩니다.”
 
+## 클래스
+```
+Transaction, Budget, MonthlySummary, RecurringRule : 가계부 데이터
+TransactionRepository : 거래 파일의 영속성
+CategoryStore, BudgetStore, RecurringStore : 각 종류의 데이터를 별도 파일에 저장
+CategoryStore, BudgetStore, RecurringStore : 각 종류의 데이터를 별도 파일에 저장
+LedgerService : 검증 및 흐름 제어
+BackupManager : 백업
+```
+
 ## 오류와 종료 코드
 
 유효하지 않은 날짜·금액·타입·카테고리, 없는 id, 잘못된 CSV에는 `오류:`와 가능한 경우 `해결:` 문구를 출력합니다. 정상 종료 코드는 `0`, 업무 규칙 또는 입력 오류는 `2`, 취소는 `130`입니다.
