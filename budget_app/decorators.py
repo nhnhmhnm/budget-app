@@ -17,6 +17,7 @@ R = TypeVar("R")
 logger = logging.getLogger("budget_app")
 
 
+# 공통 오류 처리
 def measure_execution(func: Callable[P, R]) -> Callable[P, R]:
     """명령 실행 시간을 로그에 기록한다."""
 
@@ -32,6 +33,7 @@ def measure_execution(func: Callable[P, R]) -> Callable[P, R]:
     return wrapper
 
 
+# 실행 시간 측정
 def command_boundary(func: Callable[P, int]) -> Callable[P, int]:
     """사용자용 오류를 스택 트레이스 없이 일관된 형식으로 출력한다."""
 
